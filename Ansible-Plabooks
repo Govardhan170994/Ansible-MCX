@@ -387,3 +387,7 @@
         msg: "Reboot required to load rules"
       when: audit_status.stdout | regex_search("enabled.*2")
 
+ERROR#########################
+
+TASK [Create the audit rules file] **********************************************************************************************************************************************************
+fatal: [192.168.30.103]: FAILED! => {"changed": false, "msg": "Path /etc/audit/rules.d/50-kernel_modules.rules does not exist !", "rc": 257}
