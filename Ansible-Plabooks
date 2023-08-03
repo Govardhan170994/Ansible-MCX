@@ -1,4 +1,4 @@
-4.1.3.20	Ensure the audit configuration is immutable (Automated)
+# 4.1.3.20	Ensure the audit configuration is immutable (Automated)
 
 - name: Create directory if it doesn't exist
   file:
@@ -19,7 +19,7 @@
   loop: ['']
 
 
-4.2.1.1	Ensure rsyslog is installed (Automated)
+# 4.2.1.1	Ensure rsyslog is installed (Automated)
 
 ---
 - name: Install rsyslog
@@ -32,7 +32,7 @@
         name: rsyslog
         state: present
 
-4.2.1.2	Ensure rsyslog service is enabled (Automated)
+# 4.2.1.2	Ensure rsyslog service is enabled (Automated)
 
 ---
 - name: Enable and start rsyslog service
@@ -46,7 +46,7 @@
         state: started
         enabled: yes
 
-4.2.1.3	Ensure journald is configured to send logs to rsyslog (Manual)
+# 4.2.1.3	Ensure journald is configured to send logs to rsyslog (Manual)
 
 ---
 - name: Configure journald.conf and restart rsyslog
@@ -69,7 +69,7 @@
         state: restarted
 
 
-4.2.2.1.1	Ensure systemd-journal-remote is installed (Manual)
+# 4.2.2.1.1	Ensure systemd-journal-remote is installed (Manual)
 
 ---
 - name: Install systemd-journal-remote
