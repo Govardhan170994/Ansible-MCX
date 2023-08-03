@@ -163,3 +163,25 @@
       service:
         name: systemd-journal-upload
         state: restarted
+
+# 4.2.2.4	Ensure journald is configured to write logfiles to persistent disk (Automated)
+
+---
+- name: Configure journald.conf and restart systemd-journal-upload
+  hosts: localhost
+  become: true
+
+  tasks:
+    - name: Add "Storage=persistent" to /etc/systemd/journald.conf
+      lineinfile:
+        path: /etc/systemd/journald.conf
+        line: "Storage=persistent"
+        state: present
+      notify:
+        - Restart systemd-journal-upload 
+
+  handlers:
+    - name: Restart systemd-journal-upload
+      service:
+        name: systemd-journal-upload
+        state: restarted
