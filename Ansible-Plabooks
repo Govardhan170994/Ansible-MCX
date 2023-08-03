@@ -245,3 +245,145 @@
 
   vars:
     tmpfiles_conf_permissions: "0640"
+
+
+# 4.2.1.5	Ensure logging is configured (Manual)
+
+---
+- name: Configure rsyslog
+  hosts: all
+  become: true 
+
+  tasks:
+    - name: Edit /etc/rsyslog.conf
+      blockinfile:
+        path: /etc/rsyslog.conf
+        marker: "# {mark} ANSIBLE MANAGED BLOCK {{ item }}"
+        block: |
+          *.emerg :omusrmsg:*
+          auth,authpriv.* /var/log/secure
+          mail.* -/var/log/mail
+          mail.info -/var/log/mail.info
+          mail.warning -/var/log/mail.warn
+          mail.err /var/log/mail.err
+          cron.* /var/log/cron
+          *.=warning;*.=err -/var/log/warn
+          *.crit /var/log/warn
+          *.*;mail.none;news.none -/var/log/messages
+          local0,local1.* -/var/log/localmessages
+          local2,local3.* -/var/log/localmessages
+          local4,local5.* -/var/log/localmessages
+          local6,local7.* -/var/log/localmessages
+      loop: [''] 
+
+    - name: Edit /etc/rsyslog.d/*.conf files
+      blockinfile:
+        path: "{{ item }}"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
+        block: |
+          *.emerg :omusrmsg:*
+          auth,authpriv.* /var/log/secure
+          mail.* -/var/log/mail
+          mail.info -/var/log/mail.info
+          mail.warning -/var/log/mail.warn
+          mail.err /var/log/mail.err
+          cron.* /var/log/cron
+          *.=warning;*.=err -/var/log/warn
+          *.crit /var/log/warn
+          *.*;mail.none;news.none -/var/log/messages
+          local0,local1.* -/var/log/localmessages
+          local2,local3.* -/var/log/localmessages
+          local4,local5.* -/var/log/localmessages
+          local6,local7.* -/var/log/localmessages
+      loop: "{{ log_files_list }}"
+      vars:
+        log_files_list: "{{ lookup('fileglob', '/etc/rsyslog.d/*.conf') }}"
+
+  handlers:
+    - name: Restart rsyslog
+      systemd:
+        name: rsyslog
+        state: restarted
+
+
+# 4.2.1.6	Ensure rsyslog is configured to send logs to a remote log host (Manual)
+
+---
+- name: Configure rsyslog to forward logs to central log host
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Edit /etc/rsyslog.conf
+      lineinfile:
+        path: /etc/rsyslog.conf
+        regex: '^#?(\*\.\* action\(type="omfwd" target=").*$'
+        line: '\g<1>loghost.example.com" port="514" protocol="tcp" action.resumeRetryCount="100" queue.type="LinkedList" queue.size="1000")'
+        backup: yes
+
+    - name: Edit /etc/rsyslog.d/*.conf files
+      blockinfile:
+        path: "{{ item }}"
+        backup: yes
+        block: |
+          *.* action(type="omfwd" target="loghost.example.com" port="514" protocol="tcp" action.resumeRetryCount="100" queue.type="LinkedList" queue.size="1000")
+      loop: "{{ log_files_list }}"
+      vars:
+        log_files_list: "{{ lookup('fileglob', '/etc/rsyslog.d/*.conf') }}"
+
+    - name: Reload rsyslog configuration
+      systemd:
+        name: rsyslog
+        state: restarted
+
+# 4.2.2.1.1	Ensure systemd-journal-remote is installed (Manual)
+
+---
+- name: Install systemd-journal-remote
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Install systemd-journal-remote package
+      package:
+        name: systemd-journal-remote
+        state: present
+
+
+# 4.1.3.19	Ensure kernel module loading unloading and modification is collected (Automated)
+
+
+---
+- name: Create audit rules to monitor kernel module modification
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Determine UID_MIN from /etc/login.defs
+      shell: awk '/^\s*UID_MIN/{print $2}' /etc/login.defs
+      register: uid_min_result
+
+    - name: Create the audit rules file
+      blockinfile:
+        path: /etc/audit/rules.d/50-kernel_modules.rules
+        backup: yes
+        block: |
+          {% if uid_min_result.stdout is defined %}
+          -a always,exit -F arch=b64 -S init_module,finit_module,delete_module,create_module,query_module -F auid>={{ uid_min_result.stdout }} -F auid!=unset -k kernel_modules
+          -a always,exit -F path=/usr/bin/kmod -F perm=x -F auid>={{ uid_min_result.stdout }} -F auid!=unset -k kernel_modules
+          {% else %}
+          ERROR: Variable 'UID_MIN' is unset.
+          {% endif %}
+
+    - name: Load audit rules
+      command: augenrules --load
+
+    - name: Check if reboot is required
+      command: auditctl -s
+      register: audit_status
+
+    - name: Display reboot required message if audit is enabled (status 2)
+      debug:
+        msg: "Reboot required to load rules"
+      when: audit_status.stdout | regex_search("enabled.*2")
+
