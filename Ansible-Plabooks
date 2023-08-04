@@ -391,3 +391,180 @@ ERROR#########################
 
 TASK [Create the audit rules file] **********************************************************************************************************************************************************
 fatal: [192.168.30.103]: FAILED! => {"changed": false, "msg": "Path /etc/audit/rules.d/50-kernel_modules.rules does not exist !", "rc": 257}
+
+
+
+# 4.1.3.12	Ensure login and logout events are collected (Automated)
+
+
+---
+- name: Create audit rules file for login and logout monitoring
+  hosts: all
+  gather_facts: no
+  become: yes
+
+  tasks:
+    - name: Create the audit rules file
+      blockinfile:
+        path: /etc/audit/rules.d/50-login.rules
+        block: |
+          # Monitor login and logout events
+          -w /var/log/lastlog -p wa -k logins
+          -w /var/run/faillock -p wa -k logins
+
+- name: Load the audit rules
+  hosts: all
+  gather_facts: no
+  become: yes
+
+  tasks:
+    - name: Merge and load the audit rules
+      shell: augenrules --load
+      changed_when: false
+
+- name: Check if a reboot is required
+  hosts: all
+  gather_facts: no
+  become: yes
+
+  tasks:
+    - name: Check if reboot is required
+      shell: |
+        if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then
+          echo "Reboot required to load rules";
+        fi
+      register: reboot_required
+      changed_when: false
+
+    - name: Display reboot message if required
+      debug:
+        msg: "{{ reboot_required.stdout }}"
+      when: reboot_required.stdout is defined
+
+ERROR##################
+
+TASK [Create the audit rules file] **********************************************************************************************************************************************************
+fatal: [192.168.30.103]: FAILED! => {"ansible_facts": {"discovered_interpreter_python": "/usr/libexec/platform-python"}, "changed": false, "msg": "Path /etc/audit/rules.d/50-login.rules does not exist !", "rc": 257}
+
+# 4.1.3.13	Ensure file deletion events by users are collected (Automated)
+
+
+---
+- name: Create audit rules to monitor chcon command
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Check if the system is 64-bit or 32-bit
+      shell: uname -m
+      register: architecture
+
+    - name: Create audit rules file for 64-bit systems
+      block:
+        - name: Copy 64-bit audit rules file
+          copy:
+            content: |
+              # chcon command monitoring rules
+              -a always,exit -F arch=b64 -S chcon -F success=1 -k chcon_success
+              -a always,exit -F arch=b64 -S chcon -F success=0 -k chcon_failure
+            dest: /etc/audit/rules.d/chcon_audit.rules
+          when: architecture.stdout == "x86_64"
+
+        - name: Reload audit rules for 64-bit systems
+          command: auditctl -R /etc/audit/rules.d/chcon_audit.rules
+          when: architecture.stdout == "x86_64"
+
+        - name: Set fact for 64-bit systems
+          set_fact:
+            reboot_required: true
+          when: architecture.stdout == "x86_64"
+      tags:
+        - 64-bit
+
+    - name: Create audit rules file for 32-bit systems
+      block:
+        - name: Copy 32-bit audit rules file
+          copy:
+            content: |
+              # chcon command monitoring rules for 32-bit systems
+              -a always,exit -F arch=b32 -S chcon -F success=1 -k chcon_success
+              -a always,exit -F arch=b32 -S chcon -F success=0 -k chcon_failure
+            dest: /etc/audit/rules.d/chcon_audit_32bit.rules
+          when: architecture.stdout == "i686"
+
+        - name: Reload audit rules for 32-bit systems
+          command: auditctl -R /etc/audit/rules.d/chcon_audit_32bit.rules
+          when: architecture.stdout == "i686"
+
+        - name: Set fact for 32-bit systems
+          set_fact:
+            reboot_required: true
+          when: architecture.stdout == "i686"
+      tags:
+        - 32-bit
+
+    - name: Check if reboot is required
+      debug:
+        msg: "Reboot required to load rules"
+      when: reboot_required|default(false) and ansible_system == "Linux"
+
+    - name: Check if reboot is not required
+      debug:
+        msg: "No reboot required"
+      when: not reboot_required|default(false) and ansible_system == "Linux"
+
+
+# 4.1.3.14	Ensure events that modify the system's Mandatory Access Controls are collected (Automated)
+
+
+---
+- name: Create audit rules file for monitoring MAC policy modifications
+  hosts: all
+  gather_facts: no
+  become: yes
+
+  tasks:
+    - name: Create the audit rules file
+      blockinfile:
+        path: /etc/audit/rules.d/50-MAC-policy.rules
+        block: |
+          # Monitor events that modify the system's Mandatory Access Controls
+          -w /etc/selinux -p wa -k MAC-policy
+          -w /usr/share/selinux -p wa -k MAC-policy
+
+- name: Load the audit rules
+  hosts: all
+  gather_facts: no
+  become: yes
+
+  tasks:
+    - name: Merge and load the audit rules
+      shell: augenrules --load
+      changed_when: false
+
+- name: Check if a reboot is required
+  hosts: all
+  gather_facts: no
+  become: yes
+
+  tasks:
+    - name: Check if reboot is required
+      shell: |
+        if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then
+          echo "Reboot required to load rules";
+        fi
+      register: reboot_required
+      changed_when: false
+
+    - name: Display reboot message if required
+      debug:
+        msg: "{{ reboot_required.stdout }}"
+      when: reboot_required.stdout is defined
+
+ERROR#############
+
+TASK [Create the audit rules file] **********************************************************************************************************************************************************
+fatal: [192.168.30.103]: FAILED! => {"ansible_facts": {"discovered_interpreter_python": "/usr/libexec/platform-python"}, "changed": false, "msg": "Path /etc/audit/rules.d/50-MAC-policy.rules does not exist !", "rc": 257}
+
+
