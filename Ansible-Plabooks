@@ -568,3 +568,84 @@ TASK [Create the audit rules file] *********************************************
 fatal: [192.168.30.103]: FAILED! => {"ansible_facts": {"discovered_interpreter_python": "/usr/libexec/platform-python"}, "changed": false, "msg": "Path /etc/audit/rules.d/50-MAC-policy.rules does not exist !", "rc": 257}
 
 
+
+# 4.1.3.14	Ensure events that modify the system's Mandatory Access Controls are collected (Automated)
+
+---
+- name: Create audit rules file for monitoring MAC policy modifications
+  hosts: all
+  gather_facts: no
+  become: yes
+
+  tasks:
+    - name: Create the audit rules file
+      lineinfile:
+        path: /etc/audit/rules.d/50-MAC-policy.rules
+        line: "-w /etc/selinux -p wa -k MAC-policy -w /usr/share/selinux -p wa -k MAC-policy"
+      create: yes
+
+- name: Load the audit rules
+  hosts: localhost
+  gather_facts: no
+  become: yes
+
+  tasks:
+    - name: Merge and load the audit rules
+      shell: augenrules --load
+      changed_when: false
+
+- name: Check if a reboot is required
+  hosts: localhost
+  gather_facts: no
+  become: yes
+
+  tasks:
+    - name: Check if reboot is required
+      shell: |
+        if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then
+          echo "Reboot required to load rules";
+        fi
+      register: reboot_required
+      changed_when: false
+
+    - name: Display reboot message if required
+      debug:
+        msg: "{{ reboot_required.stdout }}"
+      when: reboot_required.stdout is defined
+
+
+
+# 4.1.3.11	Ensure session initiation information is collected (Automated)
+
+---
+- name: Create or edit audit rules file
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Add relevant rules to the file
+      lineinfile:
+        path: /etc/audit/rules.d/50-session.rules
+        line: '-w /var/run/utmp -p wa -k session -w /var/log/wtmp -p wa -k session -w /var/log/btmp -p wa -k session'
+        create: yes
+        state: present
+      notify:
+        - Load audit rules
+
+  handlers:
+    - name: Load audit rules
+      shell: augenrules --load
+
+- name: Check if a reboot is required
+  hosts: your_target_host
+  become: yes
+
+  tasks:
+    - name: Check auditctl status
+      shell: auditctl -s
+      register: audit_status
+
+    - name: Reboot required message
+      debug:
+        msg: "Reboot required to load rules"
+      when: '"enabled" in audit_status.stdout and "2" in audit_status.stdout'
